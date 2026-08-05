@@ -15,16 +15,29 @@ TokenShift is a zero-cost Figma-to-Tailwind design token sync engine:
 
 ## 🚀 Recent Key Changes & Fixes
 
-### 1. Figma Plugin GitHub Sync Fixes (`plugin/ui.html`)
-- **Existing File Update (`sha` handling)**: Fixed `422 Unprocessable Entity` ("Failed to commit token file") error when updating `tokens/tokens.json`. The plugin now queries the branch for existing file metadata to attach the current file `sha` to GitHub Contents API `PUT` requests.
-- **Dynamic PR Base Branching**: Updated Pull Request creation from a hardcoded `main` base branch to dynamically detect and target `master` (or `main`) based on the repository's default branch.
+### 1. Figma Plugin GitHub Sync (`plugin/ui.html`) ✅
+- **SHA Handling**: Fetches existing file SHA before PUT to prevent `422` errors on updates.
+- **Dynamic Default Branch**: Auto-detects `main` vs `master` for PR base.
+- **Token Path**: Commits to `tokens/tokens.json` at repo root.
 
-### 2. GitHub Actions CI/CD Pipeline & Repo Structure Fix (`.github/workflows/tokens.yml`)
-- **Converted `web/` from Submodule Link to Standard Directory**: Removed stale nested `.git` inside `web/` and untracked git submodule link mode `160000`. `web/` is now directly tracked as a normal folder in the root repository.
-- **Workflow Checkout Updated**: Removed `submodules: true` from `.github/workflows/tokens.yml` to prevent `git submodule update` from crashing when checking out.
+### 2. Repo Structure Fix ✅
+- **Removed git submodule link**: `web/` was tracked as mode `160000` (submodule) with no `.gitmodules` file, causing `git submodule update` to crash in CI.
+- **Fix**: Removed nested `web/.git`, re-added `web/` as a normal tracked directory. Removed `submodules: true` from workflow.
 
-### 3. Git Submodule Pointer Sync
-- Updated main repository pointer for the `web` submodule to track the latest token compilation and Tailwind setup commits (`28df1ac`).
+### 3. Build Script — Token Merge Strategy (`web/build-tokens.js`) ✅
+- **Dual-source merge**: Reads `web/tokens/tokens.json` (base app design system) first, then deep-merges `tokens/tokens.json` (Figma-synced) on top.
+- **Result**: 127 CSS variables generated — app dashboard tokens preserved, Figma tokens added/override on top.
+
+### 4. GitHub Actions CI/CD Workflow (`.github/workflows/tokens.yml`) ✅
+- **Trigger**: `push` only (not `pull_request` — that event can't write back to master).
+- **Paths**: `tokens/**`, `web/tokens/**`, `web/build-tokens.js`.
+- **Auto-commit**: Uses `stefanzweifel/git-auto-commit-action@v5` with `[skip ci]` flag to prevent infinite loops.
+- **Bot identity**: Commits as `TokenShift Bot`.
+- **Checkout**: Uses `ref: ${{ github.ref }}` for correct branch resolution.
+
+### 5. Web App Fixes (`web/src/styles/tokens.css`) ✅
+- **Stray backtick removed**: Accidentally introduced backtick (`` ` ``) in `tokens.css` caused CSS parse failure in Next.js. Fixed by regenerating via `npm run build:tokens`.
+- **Cache cleared**: Removed `.next/` cache to force clean recompilation.
 
 ---
 
