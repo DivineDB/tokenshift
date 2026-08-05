@@ -396,13 +396,16 @@
 
         // 1. Get default branch SHA
         let mainSha;
+        let defaultBranch;
         const refRes = await fetch(`https://api.github.com/repos/${owner}/${repoName}/git/ref/heads/main`, { headers });
         if (!refRes.ok) {
           const masterRes = await fetch(`https://api.github.com/repos/${owner}/${repoName}/git/ref/heads/master`, { headers });
           if (!masterRes.ok) throw new Error('Branch main/master not found');
           mainSha = (await masterRes.json()).object.sha;
+          defaultBranch = 'master';
         } else {
           mainSha = (await refRes.json()).object.sha;
+          defaultBranch = 'main';
         }
 
         // 2. Create sync branch
@@ -419,16 +422,33 @@
         updateStatus('Uploading tokens.json...', 'warning');
         const tokenContent = extractedTokens.tokens ? extractedTokens.tokens : extractedTokens;
         const content = btoa(unescape(encodeURIComponent(JSON.stringify(tokenContent, null, 2))));
+
+        // Fetch existing file SHA on the new branch (file may already exist on master → copied to branch)
+        let existingSha = undefined;
+        const existingFileRes = await fetch(
+          `https://api.github.com/repos/${owner}/${repoName}/contents/${filepath}?ref=${branchName}`,
+          { headers }
+        );
+        if (existingFileRes.ok) {
+          const existingFile = await existingFileRes.json();
+          existingSha = existingFile.sha;
+        }
+
+        const fileBody = {
+          message: `🎨 TokenShift: Sync Figma Design Tokens`,
+          content,
+          branch: branchName,
+          ...(existingSha ? { sha: existingSha } : {})
+        };
         const fileRes = await fetch(`https://api.github.com/repos/${owner}/${repoName}/contents/${filepath}`, {
           method: 'PUT',
           headers,
-          body: JSON.stringify({
-            message: `🎨 TokenShift: Sync Figma Design Tokens`,
-            content,
-            branch: branchName
-          })
+          body: JSON.stringify(fileBody)
         });
-        if (!fileRes.ok) throw new Error('Failed to commit token file');
+        if (!fileRes.ok) {
+          const errBody = await fileRes.json().catch(() => ({}));
+          throw new Error(errBody.message || 'Failed to commit token file');
+        }
 
         // 4. Open Pull Request
         updateStatus('Opening Pull Request...', 'warning');
@@ -439,7 +459,7 @@
             title: '🎨 TokenShift: Figma Design Token Sync',
             body: `## 🎨 TokenShift Sync Engine\n\nAutomatically synced design tokens from Figma file **${extractedTokens.fileName}**.\n\n- **Synced at**: ${new Date().toLocaleString()}\n- **Target**: \`${filepath}\``,
             head: branchName,
-            base: 'main'
+            base: defaultBranch
           })
         });
 
