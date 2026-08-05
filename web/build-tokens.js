@@ -13,7 +13,9 @@ const fs   = require("fs");
 const path = require("path");
 
 // ─── Config ───────────────────────────────────────────────────────────────────
-const TOKENS_INPUT  = path.join(__dirname, "tokens", "tokens.json");
+const ROOT_TOKENS   = path.join(__dirname, "..", "tokens", "tokens.json");
+const SUB_TOKENS    = path.join(__dirname, "tokens", "tokens.json");
+const TOKENS_INPUT  = fs.existsSync(ROOT_TOKENS) ? ROOT_TOKENS : SUB_TOKENS;
 const CSS_OUTPUT    = path.join(__dirname, "src", "styles", "tokens.css");
 const CSS_DIR       = path.dirname(CSS_OUTPUT);
 
