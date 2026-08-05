@@ -415,9 +415,10 @@
         });
         if (!branchRes.ok) throw new Error('Failed to create branch');
 
-        // 3. Upload File
+        // 3. Upload File (Clean W3C Token JSON — tokens object only, no root metadata)
         updateStatus('Uploading tokens.json...', 'warning');
-        const content = btoa(unescape(encodeURIComponent(JSON.stringify(extractedTokens, null, 2))));
+        const tokenContent = extractedTokens.tokens ? extractedTokens.tokens : extractedTokens;
+        const content = btoa(unescape(encodeURIComponent(JSON.stringify(tokenContent, null, 2))));
         const fileRes = await fetch(`https://api.github.com/repos/${owner}/${repoName}/contents/${filepath}`, {
           method: 'PUT',
           headers,

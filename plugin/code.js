@@ -5,16 +5,14 @@
 /// <reference path="node_modules/@figma/plugin-typings/index.d.ts" />
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 /**
- * Convert a Figma RGBA color to a W3C-compatible hex string.
+ * Convert a decimal RGB (0-1) color to a HEX string.
  */
-function rgbaToHex(r, g, b, a) {
-    const toHex = (v) => Math.round(v * 255)
+function rgbToHex(r, g, b, a = 1) {
+    const toHex = (n) => Math.round(n * 255)
         .toString(16)
         .padStart(2, "0");
-    if (a < 1) {
-        return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${parseFloat(a.toFixed(3))})`;
-    }
-    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+    const hex = `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+    return a < 1 ? `${hex}${toHex(a)}` : hex;
 }
 /**
  * Sanitize a token name segment to be a valid identifier key.
@@ -24,6 +22,12 @@ function sanitizeKey(name) {
         .replace(/[^a-zA-Z0-9_\-]/g, "-")
         .replace(/^-+|-+$/g, "")
         .toLowerCase();
+}
+/**
+ * Sanitize token names for CSS/Style Dictionary.
+ */
+function cleanTokenName(name) {
+    return name.toLowerCase().replace(/[\/\s\_]+/g, "-");
 }
 /**
  * Set a nested value in a W3CTokenGroup using a dot-path.
@@ -42,6 +46,63 @@ function setNestedToken(group, path, token) {
 }
 // ─── Token Extractors ─────────────────────────────────────────────────────────
 /**
+ * Extract Colors from Figma Variables & Fallback to Paint Styles
+ */
+async function extractColorTokens() {
+    var _a, _b, _c;
+    const colorTokens = {};
+    // 1. Fetch native Figma Variables
+    const collections = await figma.variables.getLocalVariableCollectionsAsync();
+    const variables = await figma.variables.getLocalVariablesAsync("COLOR");
+    for (const variable of variables) {
+        const collection = collections.find((c) => c.id === variable.variableCollectionId);
+        const defaultModeId = collection ? collection.defaultModeId : Object.keys(variable.valuesByMode)[0];
+        const value = defaultModeId ? variable.valuesByMode[defaultModeId] : undefined;
+        if (value) {
+            if (typeof value === "object" && "r" in value) {
+                // Direct RGBA
+                const val = value;
+                const hex = rgbToHex(val.r, val.g, val.b, (_a = val.a) !== null && _a !== void 0 ? _a : 1);
+                colorTokens[cleanTokenName(variable.name)] = {
+                    $value: hex,
+                    $type: "color",
+                };
+            }
+            else if (typeof value === "object" && "type" in value && value.type === "VARIABLE_ALIAS") {
+                // Alias Resolution
+                const alias = value;
+                const aliasedVar = await figma.variables.getVariableByIdAsync(alias.id);
+                if (aliasedVar) {
+                    const aliasedCollection = collections.find((c) => c.id === aliasedVar.variableCollectionId);
+                    const aliasedDefaultModeId = aliasedCollection ? aliasedCollection.defaultModeId : Object.keys(aliasedVar.valuesByMode)[0];
+                    const aliasedVal = aliasedDefaultModeId ? aliasedVar.valuesByMode[aliasedDefaultModeId] : undefined;
+                    if (aliasedVal && typeof aliasedVal === "object" && "r" in aliasedVal) {
+                        const val = aliasedVal;
+                        colorTokens[cleanTokenName(variable.name)] = {
+                            $value: rgbToHex(val.r, val.g, val.b, (_b = val.a) !== null && _b !== void 0 ? _b : 1),
+                            $type: "color",
+                        };
+                    }
+                }
+            }
+        }
+    }
+    // 2. Fallback: Fetch classic Figma Color Paint Styles if variables are empty
+    if (Object.keys(colorTokens).length === 0) {
+        const paintStyles = await figma.getLocalPaintStylesAsync();
+        for (const style of paintStyles) {
+            const paint = style.paints[0];
+            if (paint && paint.type === "SOLID") {
+                colorTokens[cleanTokenName(style.name)] = {
+                    $value: rgbToHex(paint.color.r, paint.color.g, paint.color.b, (_c = paint.opacity) !== null && _c !== void 0 ? _c : 1),
+                    $type: "color",
+                };
+            }
+        }
+    }
+    return colorTokens;
+}
+/**
  * Extract all local Figma variables (colors, numbers, strings, booleans)
  * and map them into the W3C token format.
  */
@@ -52,13 +113,14 @@ async function extractVariableTokens() {
     const collections = await figma.variables.getLocalVariableCollectionsAsync();
     // Build a collection ID → name map
     const collectionMap = new Map(collections.map((c) => [c.id, sanitizeKey(c.name)]));
+    let colorCount = 0;
     for (const variable of variables) {
+        const collection = collections.find((c) => c.id === variable.variableCollectionId);
         const collectionName = (_a = collectionMap.get(variable.variableCollectionId)) !== null && _a !== void 0 ? _a : "global";
-        // Use first resolved mode value
-        const modeIds = Object.keys(variable.valuesByMode);
-        if (modeIds.length === 0)
+        const defaultModeId = collection ? collection.defaultModeId : Object.keys(variable.valuesByMode)[0];
+        if (!defaultModeId)
             continue;
-        const rawValue = variable.valuesByMode[modeIds[0]];
+        const rawValue = variable.valuesByMode[defaultModeId];
         // Resolve alias variables
         let resolvedValue = rawValue;
         if (typeof rawValue === "object" &&
@@ -68,8 +130,13 @@ async function extractVariableTokens() {
             const alias = rawValue;
             const aliasedVar = await figma.variables.getVariableByIdAsync(alias.id);
             if (aliasedVar) {
-                const aliasModeIds = Object.keys(aliasedVar.valuesByMode);
-                resolvedValue = aliasedVar.valuesByMode[aliasModeIds[0]];
+                const aliasedCollection = collections.find((c) => c.id === aliasedVar.variableCollectionId);
+                const aliasedDefaultModeId = aliasedCollection
+                    ? aliasedCollection.defaultModeId
+                    : Object.keys(aliasedVar.valuesByMode)[0];
+                if (aliasedDefaultModeId) {
+                    resolvedValue = aliasedVar.valuesByMode[aliasedDefaultModeId];
+                }
             }
         }
         const nameParts = variable.name.split("/").map(sanitizeKey);
@@ -77,47 +144,100 @@ async function extractVariableTokens() {
         let tokenValue = null;
         switch (variable.resolvedType) {
             case "COLOR": {
-                const c = resolvedValue;
-                tokenValue = {
-                    $value: rgbaToHex(c.r, c.g, c.b, c.a),
-                    $type: "color",
-                    $description: variable.description || undefined,
-                };
+                if (resolvedValue && typeof resolvedValue === "object" && "r" in resolvedValue) {
+                    const c = resolvedValue;
+                    tokenValue = {
+                        $value: rgbToHex(c.r, c.g, c.b, typeof c.a === "number" ? c.a : 1),
+                        $type: "color",
+                        $description: variable.description || undefined,
+                    };
+                    colorCount++;
+                }
                 break;
             }
             case "FLOAT": {
                 const num = resolvedValue;
-                // Heuristic: if the collection name contains "spacing" or "size", treat as dimension
-                const isDimension = collectionName.includes("spacing") ||
-                    collectionName.includes("size") ||
-                    variable.name.toLowerCase().includes("spacing") ||
-                    variable.name.toLowerCase().includes("radius") ||
-                    variable.name.toLowerCase().includes("size") ||
-                    variable.name.toLowerCase().includes("gap");
-                tokenValue = {
-                    $value: isDimension ? `${num}px` : num,
-                    $type: isDimension ? "dimension" : "number",
-                    $description: variable.description || undefined,
-                };
+                if (typeof num === "number") {
+                    const isDimension = collectionName.includes("spacing") ||
+                        collectionName.includes("size") ||
+                        variable.name.toLowerCase().includes("spacing") ||
+                        variable.name.toLowerCase().includes("radius") ||
+                        variable.name.toLowerCase().includes("size") ||
+                        variable.name.toLowerCase().includes("gap");
+                    tokenValue = {
+                        $value: isDimension ? `${num}px` : num,
+                        $type: isDimension ? "dimension" : "number",
+                        $description: variable.description || undefined,
+                    };
+                }
                 break;
             }
             case "STRING": {
-                tokenValue = {
-                    $value: resolvedValue,
-                    $type: "string",
-                    $description: variable.description || undefined,
-                };
+                if (typeof resolvedValue === "string") {
+                    tokenValue = {
+                        $value: resolvedValue,
+                        $type: "string",
+                        $description: variable.description || undefined,
+                    };
+                }
                 break;
             }
             case "BOOLEAN":
-                // Skip booleans — not design token relevant
                 break;
         }
         if (tokenValue) {
             setNestedToken(group, path, tokenValue);
         }
     }
+    // Fallback: Fetch classic Figma Color Paint Styles if no color variables were extracted
+    if (colorCount === 0) {
+        const paintStyles = await figma.getLocalPaintStylesAsync();
+        for (const style of paintStyles) {
+            const paint = style.paints[0];
+            if (paint && paint.type === "SOLID") {
+                const nameParts = style.name.split("/").map(sanitizeKey);
+                const path = ["color", ...nameParts];
+                const tokenValue = {
+                    $value: rgbToHex(paint.color.r, paint.color.g, paint.color.b, typeof paint.opacity === "number" ? paint.opacity : 1),
+                    $type: "color",
+                    $description: style.description || undefined,
+                };
+                setNestedToken(group, path, tokenValue);
+            }
+        }
+    }
     return group;
+}
+/**
+ * Map Figma font style name (e.g. "Semi Bold", "Regular", "Bold") to a numeric font weight string.
+ */
+function mapFontWeight(styleName) {
+    const normalized = styleName.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const weights = {
+        thin: "100",
+        hairline: "100",
+        "extra light": "200",
+        extralight: "200",
+        "ultra light": "200",
+        ultralight: "200",
+        light: "300",
+        regular: "400",
+        normal: "400",
+        book: "400",
+        medium: "500",
+        "semi bold": "600",
+        semibold: "600",
+        "demi bold": "600",
+        demibold: "600",
+        bold: "700",
+        "extra bold": "800",
+        extrabold: "800",
+        "ultra bold": "800",
+        ultrabold: "800",
+        black: "900",
+        heavy: "900",
+    };
+    return weights[normalized] || weights[styleName.toLowerCase()] || styleName;
 }
 /**
  * Extract local text styles and map them to W3C typography tokens.
@@ -134,7 +254,7 @@ async function extractTypographyTokens() {
                 $type: "fontFamily",
             },
             "font-weight": {
-                $value: style.fontName.style,
+                $value: mapFontWeight(style.fontName.style),
                 $type: "fontWeight",
             },
             "font-size": {
