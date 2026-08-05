@@ -146,7 +146,7 @@
         </div>
         <div>
           <label for="gh-path" class="block text-[11px] font-medium text-[var(--figma-text-secondary)] mb-1">Target Path</label>
-          <input type="text" id="gh-path" value="tokens/tokens.json" class="figma-input w-full px-2.5 py-1.5 rounded-md text-xs font-mono" />
+          <input type="text" id="gh-path" value="web/tokens/tokens.json" class="figma-input w-full px-2.5 py-1.5 rounded-md text-xs font-mono" />
         </div>
       </div>
     </div>
@@ -377,7 +377,7 @@
 
       const pat = patInput.value.trim();
       const repo = repoInput.value.trim();
-      const filepath = pathInput.value.trim() || 'tokens/tokens.json';
+      const filepath = pathInput.value.trim() || 'web/tokens/tokens.json';
 
       if (!pat) { updateStatus('Enter GitHub Token', 'error'); return; }
       if (!repo || !repo.includes('/')) { updateStatus('Enter owner/repo', 'error'); return; }
