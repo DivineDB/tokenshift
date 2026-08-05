@@ -20,8 +20,9 @@ TokenShift is a zero-cost Figma-to-Tailwind design token sync engine:
 - **Dynamic PR Base Branching**: Updated Pull Request creation from a hardcoded `main` base branch to dynamically detect and target `master` (or `main`) based on the repository's default branch.
 
 ### 2. GitHub Actions CI/CD Pipeline Fixes (`.github/workflows/tokens.yml`)
-- **Submodule Checkout**: Added `submodules: true` to `actions/checkout@v4`. Since `web/` is tracked as a git submodule, this ensures `web/package-lock.json` is available during checkout.
-- **Node.js Setup & Cache Path**: Corrected `cache-dependency-path` to `./web/package-lock.json` so `actions/setup-node` can resolve dependency caches properly before running `npm ci`.
+- **Triggers**: Updated to run on both `push` and `pull_request` for `master` and `main` branches whenever `tokens/**` or `web/tokens/**` changes.
+- **Robust Installation**: Added `npm ci || npm install` in `./web` to prevent build failures if package-lock is updating.
+- **Git Auto Commit Action**: Integrated `stefanzweifel/git-auto-commit-action@v5` to reliably commit `web/src/styles/tokens.css` and `web/src/styles/tailwind-hint.json`.
 
 ### 3. Git Submodule Pointer Sync
 - Updated main repository pointer for the `web` submodule to track the latest token compilation and Tailwind setup commits (`28df1ac`).
