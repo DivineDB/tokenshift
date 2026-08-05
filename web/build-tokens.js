@@ -15,9 +15,51 @@ const path = require("path");
 // ─── Config ───────────────────────────────────────────────────────────────────
 const ROOT_TOKENS   = path.join(__dirname, "..", "tokens", "tokens.json");
 const SUB_TOKENS    = path.join(__dirname, "tokens", "tokens.json");
-const TOKENS_INPUT  = fs.existsSync(ROOT_TOKENS) ? ROOT_TOKENS : SUB_TOKENS;
 const CSS_OUTPUT    = path.join(__dirname, "src", "styles", "tokens.css");
 const CSS_DIR       = path.dirname(CSS_OUTPUT);
+
+/**
+ * Deep-merge two token group objects (b wins on leaf conflicts).
+ */
+function deepMerge(a, b) {
+  if (!b || typeof b !== "object") return a;
+  const result = Object.assign({}, a);
+  for (const key of Object.keys(b)) {
+    if (
+      key in result &&
+      typeof result[key] === "object" && !("$value" in result[key]) &&
+      typeof b[key]    === "object" && !("$value" in b[key])
+    ) {
+      result[key] = deepMerge(result[key], b[key]);
+    } else {
+      result[key] = b[key];
+    }
+  }
+  return result;
+}
+
+/**
+ * Load and merge token files.
+ * - web/tokens/tokens.json  → base (app design system / demo tokens)
+ * - ../tokens/tokens.json   → Figma-synced overlay (merged on top)
+ */
+function loadTokens() {
+  let base = {};
+  if (fs.existsSync(SUB_TOKENS)) {
+    const raw = JSON.parse(fs.readFileSync(SUB_TOKENS, "utf-8"));
+    base = raw.tokens ? raw.tokens : raw;
+    console.log(`📂 Base tokens: ${SUB_TOKENS}`);
+  }
+
+  let figma = {};
+  if (fs.existsSync(ROOT_TOKENS)) {
+    const raw = JSON.parse(fs.readFileSync(ROOT_TOKENS, "utf-8"));
+    figma = raw.tokens ? raw.tokens : raw;
+    console.log(`🎨 Figma tokens: ${ROOT_TOKENS}`);
+  }
+
+  return deepMerge(base, figma);
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -86,16 +128,13 @@ function normalizeFontWeight(val) {
 function buildTokens() {
   console.log("🎨 TokenShift — building design tokens…");
 
-  // Read input
-  if (!fs.existsSync(TOKENS_INPUT)) {
-    console.error(`❌ Token file not found: ${TOKENS_INPUT}`);
+  // Load & merge both token sources
+  const rawTokens = loadTokens();
+
+  if (Object.keys(rawTokens).length === 0) {
+    console.error("❌ No token files found. Expected web/tokens/tokens.json or tokens/tokens.json");
     process.exit(1);
   }
-
-  const rawInput = JSON.parse(fs.readFileSync(TOKENS_INPUT, "utf-8"));
-  
-  // Unwrap if metadata wrapper exists at root level (Solution 2)
-  const rawTokens = rawInput.tokens ? rawInput.tokens : rawInput;
 
   // Collect CSS variables grouped by top-level category
   const groups = {};
