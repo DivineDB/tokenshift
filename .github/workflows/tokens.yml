@@ -6,11 +6,7 @@ on:
     paths:
       - "tokens/**"
       - "web/tokens/**"
-  pull_request:
-    branches: [ master, main ]
-    paths:
-      - "tokens/**"
-      - "web/tokens/**"
+      - "web/build-tokens.js"
 
 permissions:
   contents: write
@@ -26,6 +22,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
+          ref: ${{ github.ref }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -41,10 +38,12 @@ jobs:
       - name: Commit compiled tokens.css
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "style: auto-compile Figma tokens to CSS"
+          commit_message: "style: auto-compile Figma tokens to CSS [skip ci]"
           file_pattern: "web/src/styles/tokens.css web/src/styles/tailwind-hint.json"
+          commit_user_name: TokenShift Bot
+          commit_user_email: tokenshift-bot@users.noreply.github.com
 
-      - name: 📊 Token build summary
+      - name: Token build summary
         if: always()
         run: |
           echo "## 🎨 TokenShift Token Build" >> $GITHUB_STEP_SUMMARY
