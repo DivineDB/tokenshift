@@ -19,10 +19,9 @@ TokenShift is a zero-cost Figma-to-Tailwind design token sync engine:
 - **Existing File Update (`sha` handling)**: Fixed `422 Unprocessable Entity` ("Failed to commit token file") error when updating `tokens/tokens.json`. The plugin now queries the branch for existing file metadata to attach the current file `sha` to GitHub Contents API `PUT` requests.
 - **Dynamic PR Base Branching**: Updated Pull Request creation from a hardcoded `main` base branch to dynamically detect and target `master` (or `main`) based on the repository's default branch.
 
-### 2. GitHub Actions CI/CD Pipeline Fixes (`.github/workflows/tokens.yml`)
-- **Triggers**: Updated to run on both `push` and `pull_request` for `master` and `main` branches whenever `tokens/**` or `web/tokens/**` changes.
-- **Robust Installation**: Added `npm ci || npm install` in `./web` to prevent build failures if package-lock is updating.
-- **Git Auto Commit Action**: Integrated `stefanzweifel/git-auto-commit-action@v5` to reliably commit `web/src/styles/tokens.css` and `web/src/styles/tailwind-hint.json`.
+### 2. GitHub Actions CI/CD Pipeline & Repo Structure Fix (`.github/workflows/tokens.yml`)
+- **Converted `web/` from Submodule Link to Standard Directory**: Removed stale nested `.git` inside `web/` and untracked git submodule link mode `160000`. `web/` is now directly tracked as a normal folder in the root repository.
+- **Workflow Checkout Updated**: Removed `submodules: true` from `.github/workflows/tokens.yml` to prevent `git submodule update` from crashing when checking out.
 
 ### 3. Git Submodule Pointer Sync
 - Updated main repository pointer for the `web` submodule to track the latest token compilation and Tailwind setup commits (`28df1ac`).
