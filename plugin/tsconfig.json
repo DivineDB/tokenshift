@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["ES2017", "DOM"],
+    "strict": true,
+    "typeRoots": ["./node_modules/@types"],
+    "outDir": "./dist",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "skipLibCheck": true,
+    "noEmit": false
+  },
+  "include": ["code.ts"],
+  "exclude": ["node_modules", "dist"]
+}

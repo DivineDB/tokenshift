@@ -1,0 +1,15 @@
+{
+  "name": "tokenshift-plugin",
+  "version": "1.0.0",
+  "description": "TokenShift — Figma Design Token Extractor Plugin",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && copy dist\\code.js code.js",
+    "watch": "tsc -p tsconfig.json --watch",
+    "build:win": "tsc -p tsconfig.json && copy dist\\code.js code.js",
+    "build:unix": "tsc -p tsconfig.json && cp dist/code.js code.js"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.99.0",
+    "typescript": "^5.5.4"
+  }
+}

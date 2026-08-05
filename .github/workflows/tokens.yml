@@ -1,0 +1,72 @@
+name: TokenShift — Compile Design Tokens
+
+on:
+  push:
+    paths:
+      - "tokens/**"
+      - "web/tokens/**"
+
+permissions:
+  contents: write
+
+jobs:
+  build-tokens:
+    name: Build & Commit Tokens CSS
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./web
+
+    steps:
+      - name: ⬇️ Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: 🟢 Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🎨 Compile design tokens
+        run: npm run build:tokens
+
+      - name: 🔍 Check for changes
+        id: diff
+        run: |
+          git diff --quiet src/styles/tokens.css && echo "changed=false" >> $GITHUB_OUTPUT || echo "changed=true" >> $GITHUB_OUTPUT
+
+      - name: 💾 Commit compiled tokens.css
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          git config user.name  "TokenShift Bot"
+          git config user.email "tokenshift-bot@users.noreply.github.com"
+          git add src/styles/tokens.css src/styles/tailwind-hint.json
+          git commit -m "🎨 TokenShift: Auto-compile design tokens [skip ci]
+
+          Triggered by changes to tokens/**
+          Generated CSS variables and typography utility classes from W3C token JSON."
+          git push
+
+      - name: ✅ No changes detected
+        if: steps.diff.outputs.changed == 'false'
+        run: echo "✅ tokens.css is already up to date — no commit needed."
+
+      - name: 📊 Token build summary
+        if: always()
+        run: |
+          echo "## 🎨 TokenShift Token Build" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f "src/styles/tokens.css" ]; then
+            VAR_COUNT=$(grep -c "^  --" src/styles/tokens.css || true)
+            echo "- ✅ **CSS Variables generated:** $VAR_COUNT" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "- 📁 **Output:** \`web/src/styles/tokens.css\`" >> $GITHUB_STEP_SUMMARY
+          echo "- 🕐 **Triggered at:** $(date -u '+%Y-%m-%d %H:%M UTC')" >> $GITHUB_STEP_SUMMARY
